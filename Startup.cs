@@ -11,6 +11,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using System;
+using System.Reflection;
 
 namespace AuthenticationServer
 {
@@ -27,8 +28,11 @@ namespace AuthenticationServer
 
         public void ConfigureServices(IServiceCollection services)
         {
+            var migrationsAssembly = typeof(Startup).GetTypeInfo().Assembly.GetName().Name;
+
+            var connectionString = Configuration.GetConnectionString("DefaultConnection");
             services.AddDbContext<ApplicationDbContext>(options =>
-                options.UseSqlite(Configuration.GetConnectionString("DefaultConnection")));
+                options.UseNpgsql(connectionString));
 
             services.AddIdentity<ApplicationUser, IdentityRole>()
                 .AddEntityFrameworkStores<ApplicationDbContext>()
@@ -42,16 +46,23 @@ namespace AuthenticationServer
                 iis.AutomaticAuthentication = false;
             });
 
-            var builder = services.AddIdentityServer(options =>
+            var builder = services.AddIdentityServer()
+                // Use PostgreSQL to store our configuration data
+                .AddConfigurationStore(configDb =>
                 {
-                    options.Events.RaiseErrorEvents = true;
-                    options.Events.RaiseInformationEvents = true;
-                    options.Events.RaiseFailureEvents = true;
-                    options.Events.RaiseSuccessEvents = true;
+                    configDb.ConfigureDbContext = db => db.UseNpgsql(
+                        connectionString,
+                        sql => sql.MigrationsAssembly(migrationsAssembly)
+                    );
                 })
-                .AddInMemoryIdentityResources(Config.GetIdentityResources())
-                .AddInMemoryApiResources(Config.GetApis())
-                .AddInMemoryClients(Config.GetClients())
+                // Use PostgreSQL to store operational data
+                .AddOperationalStore(operationalDb =>
+                {
+                    operationalDb.ConfigureDbContext = db => db.UseNpgsql(
+                        connectionString,
+                        sql => sql.MigrationsAssembly(migrationsAssembly)
+                    );
+                })
                 .AddAspNetIdentity<ApplicationUser>();
 
             if (Environment.IsDevelopment())
