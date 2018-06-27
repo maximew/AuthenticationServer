@@ -11,7 +11,10 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using System;
+using System.Linq;
 using System.Reflection;
+using IdentityServer4.EntityFramework.DbContexts;
+using IdentityServer4.EntityFramework.Mappers;
 
 namespace AuthenticationServer
 {
@@ -84,6 +87,8 @@ namespace AuthenticationServer
 
         public void Configure(IApplicationBuilder app)
         {
+            InitializeDatabase(app);
+
             if (Environment.IsDevelopment())
             {
                 app.UseDeveloperExceptionPage();
@@ -97,6 +102,49 @@ namespace AuthenticationServer
             app.UseStaticFiles();
             app.UseIdentityServer();
             app.UseMvcWithDefaultRoute();
+        }
+
+        private void InitializeDatabase(IApplicationBuilder app)
+        {
+            using (var serviceScope = app.ApplicationServices.GetService<IServiceScopeFactory>().CreateScope())
+            {
+                var persistedGrantDbContext =
+                    serviceScope.ServiceProvider.GetRequiredService<PersistedGrantDbContext>();
+                persistedGrantDbContext.Database.Migrate();
+
+                var configurationDbContext = serviceScope.ServiceProvider.GetRequiredService<ConfigurationDbContext>();
+                configurationDbContext.Database.Migrate();
+
+                if (!configurationDbContext.Clients.Any())
+                {
+                    foreach (var client in Config.GetClients())
+                    {
+                        configurationDbContext.Clients.Add(client.ToEntity());
+                    }
+
+                    configurationDbContext.SaveChanges();
+                }
+
+                if (!configurationDbContext.Clients.Any())
+                {
+                    foreach (var resource in Config.GetIdentityResources())
+                    {
+                        configurationDbContext.IdentityResources.Add(resource.ToEntity());
+                    }
+
+                    configurationDbContext.SaveChanges();
+                }
+
+                if (!configurationDbContext.Clients.Any())
+                {
+                    foreach (var api in Config.GetApis())
+                    {
+                        configurationDbContext.ApiResources.Add(api.ToEntity());
+                    }
+
+                    configurationDbContext.SaveChanges();
+                }
+            }
         }
     }
 }
