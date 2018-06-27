@@ -418,3 +418,5 @@ Temporary Items
 
 bin/
 obj/
+tempkey.rsa
+identityserver4_log.txt
